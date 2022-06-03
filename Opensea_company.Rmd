@@ -1,0 +1,392 @@
+---
+title: "Opensea company analysis"
+output:
+  pdf_document: 
+   latex_engine: xelatex
+date: '2022-06-03'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = FALSE)
+```
+## Introduction
+
+Data analysis is important in identifying the crucial pillars and insights in an organization or company. To ensure its success, OpenSea company is chosen with handle being @opensea. Throughout the analysis, this handle is used in fetching tweets and followers details that are associated with the company. The process of analysis is defined in the subsequent sections of the analysis. Several packages are used to aid in the analysis. These includes rtweet, dplyr among may others used. The syntax for installing the packages is install.packages("package_name") and to load it, we use library(package_name).
+```{r}
+# load twitter library - the rtweet library is recommended now over twitteR
+library(rtweet)
+library(dplyr)
+# text mining library
+library(tidytext)
+```
+## Twitter authentication details
+
+To be able to use data from twitter, it is necessary for one to be authenticated. The authentication for this process requires having name of the app, and token keys e.g consumer api keys, access token and secret keys.
+
+```{r}
+# appname is the name assigned to your created app
+appname <- "Social_Web_Analytics1234"
+key <- "dHhxanPs5YOcTTYF3WEYLqSK1"
+access_token <-"1504651164293353473-k3kHOiZjNb9WSvI8MtVOV6xEthH7xW"
+## api secret 
+secret <- "UkvZuUZME52KE1DyVe5BtlMRfawZ9uwUSiVoDTNEI3kXELZ0i9"
+access_secret <- "YQe0eayLEgUgsrhsWZwHySdlnYbFv5EHdUgG4GRGnqWQ6"
+```
+
+```{r}
+## authenticate 
+twitter_token <- create_token(
+  app = appname,
+  consumer_key = key,
+  consumer_secret = secret,
+  access_token = access_token,
+  access_secret = access_secret)
+```
+## Getting user IDs of accounts following opensea
+
+```{r}
+user_ids <- get_followers("@opensea", n = 5000)
+```
+
+```{r}
+## print sample of user ids
+head(user_ids)
+```
+## Lookup data on those accounts
+
+Using the ids' generated, data regarding users can be generated. The data here will compose of several fields as provided in the user object from the twitter api documentation.
+
+```{r}
+## lookup data on those accounts
+users <- lookup_users(user_ids$user_id)
+```
+
+```{r}
+head(users)
+```
+
+# Summary of the data
+
+```{r}
+write_as_csv(users, "opensea_followers.csv")
+#summary(users)
+```
+```{r}
+library(readr)
+users_csv <- read_csv("opensea_followers.csv")
+head(users_csv,3)
+```
+```{r}
+class(users_csv)
+```
+```{r}
+#str(users_csv)-The internal structure of the data is too much, occupying more space
+```
+## Drop null values in created at column
+Null values results to inconsistencies of the output and are considered noisy when doing data analysis and should therefore be removed.
+
+```{r}
+#get sum of null values in created_at column
+sum(is.na(users_csv$created_at))
+```
+
+```{r }
+#drop null values in created_at
+library(tidyr)
+users.filtered <- users_csv %>% drop_na(created_at)
+```
+
+```{r}
+head(users.filtered)
+```
+## Finding the creation date, and follower count of each twitter user in users.filtered
+
+```{r}
+#filter the two columns created_at and followers_count
+users.filtered.acc.date <- users.filtered %>% select(created_at, followers_count)
+head(users.filtered.acc.date)
+```
+
+```{r}
+users.filtered.acc.date$months <-months(users.filtered.acc.date$created_at)
+#head(months(users.filtered.acc.date$created_at))
+```
+
+```{r}
+head(users.filtered.acc.date,3)
+```
+
+## Creating a table summarizing followers count in months
+
+```{r}
+df <- users.filtered.acc.date %>% select(months,followers_count)
+head(df)
+```
+
+```{r}
+ df_1 <-aggregate(.~months,data=df,sum)
+ df_1
+```
+```{r}
+class(df_1)
+```
+
+```{r}
+library(data.table)
+setDT(df_1)
+df_1
+```
+```{r}
+#reshape the data to pivot wide
+df_1 %>%
+  pivot_wider(names_from = months, values_from = followers_count)
+```
+## Null and alternative hypothesis
+
+Null hypothesis- proportion of folllowers in each month are equal. Alternative hypothesis- proportion of follows in each month are not equal. For this data, wilcox is used to test of the data.
+
+```{r}
+wilcox.test(df_1$followers_count,exact = F)
+```
+
+## Intepretation of the test
+
+The assumption that proportion of followers in each month is not true and the p-value is a normal approximation because it uses the exact = FALSE instruction. The command has assumed mu = 0 because it is not specified explicitly.
+```{r}
+#Finding themes in tweets
+```
+## Finding themes in tweets
+
+Downloading 1000 tweets in English from open sea company can be achieved by using search_tweets endpoint and then specified through lang and n attributes when lang (language) chosen is english.
+
+```{r}
+tweets_en<- search_tweets("@opensea", lang = "en", n=1000)
+tweets <- tweets_en[tweets_en$followers_count > 100, ]
+```
+
+```{r}
+write_as_csv(tweets, "themes_followers.csv")
+```
+
+```{r}
+tweets_1 <- read_csv("themes_followers.csv")
+head(tweets_1, 3)
+```
+
+## Cleaning and preprocessing tweets
+### Select text field
+```{r}
+new_data <- tweets_1$text
+head(new_data, 2)
+```
+### Display internal structure of text
+
+```{r}
+str(new_data)
+```
+
+### Convert the text to lower case
+
+```{r}
+lower_case_tweets <- tolower(new_data)
+head(lower_case_tweets, 2)
+```
+
+### remove punctuations and url
+
+```{r}
+library(qdapRegex)
+lower_case_tweets <- rm_twitter_url(lower_case_tweets)
+# Replace special characters, punctuation, & numbers with spaces
+lower_case_tweets  <- gsub("[^A-Za-z]"," " , lower_case_tweets)
+# View text after replacing special characters, punctuation, & numbers
+library(tm)
+head(lower_case_tweets,2)
+```
+```{r}
+lower_case_tweets <-removePunctuation(lower_case_tweets)
+lower_case_tweets <-stripWhitespace(lower_case_tweets)
+head(lower_case_tweets,2)
+```
+
+```{r}
+#remove stop words
+#library(quanteda)
+#english_stop_words <- c("i", "me", "my", "myself","we", "our","ours","ourselves","you", "your")
+#tweets_refined <- tokens_select(lower_case_tweets,stopwords(), selection=english_stop_words)
+#lower_case_tweets <- tm::tm_map(lower_case_tweets, function(x) iconv(x, to='UTF-8-MAC', sub='byte')) 
+#lower_case_tweets <- tm::tm_map(lower_case_tweets, tm::removeWords, tm::stopwords('english')) # Removing stop-words
+```
+### document matrix
+```{r}
+corpus <- Corpus(VectorSource(lower_case_tweets))
+corpus
+```
+```{r}
+corpus[[1]]
+```
+```{r}
+stopwords("english")[1:10]
+```
+Remove all english stop words and "opensea","eth","nft","nfts","nftcommunity" since they have no meaning in this context 
+```{r}
+corpus <- tm_map(corpus, removeWords, c("opensea","eth","nft","nfts","nftcommunity","nftart", "nftartist","nftcollect","nftcollector", stopwords("english")))
+```
+```{r}
+corpus[[10]]
+```
+### Stem the document
+```{r}
+corpus <- tm_map(corpus, stemDocument)
+```
+## Extract word frequencies
+After having removed stop words and stemmed our documents, it is now possible to make a document matrix
+```{r}
+tweets.dtm.nz <- DocumentTermMatrix(corpus)
+tweets.dtm.nz
+```
+We see that in the corpus there are 1860 unique words.
+Let’s see what this matrix looks like using the inspect() function, in particular slicing a block of rows/columns from the Document Term Matrix by calling by their indices:
+```{r}
+inspect(tweets.dtm.nz)
+```
+From this inspection, we see that the word “list” appears in the tweet several times, but “check” does not appear in any of these tweets. This data is what we call sparse. This means that there are many zeros in our matrix.
+We can look at what the most popular terms are, or words, with the function findFreqTerms(), selecting a minimum number of 20 occurrences over the whole corpus:
+```{r}
+frequent_ge_20 <- findFreqTerms(tweets.dtm.nz, lowfreq = 20)
+frequent_ge_20
+```
+Out of the 1852 words in our matrix, only 57 words appear at least 20 times in our tweets.
+This means that we probably have a lot of terms that will be pretty useless for our prediction model. The number of terms is an issue for two main reasons:
+One is computational: more terms means more independent variables, which usually means it takes longer to build our models.
+The other is that in building models the ratio of independent variables to observations will affect how well the model will generalize.
+```{r}
+sparse_DTM <- removeSparseTerms(tweets.dtm.nz, 0.995)
+sparse_DTM
+```
+Only 409 terms are unique in the dataset.
+```{r}
+## Finding themes using clustering
+```
+
+```{r}
+# - Sparse implementations aren't necessary compatible with clustering algorithms
+tfidf.matrix <- as.matrix(sparse_DTM)
+# Cosine distance matrix (useful for specific clustering algorithms)
+dist.matrix = proxy::dist(tfidf.matrix, method = "cosine")
+km<-kmeans(dist.matrix,3) #3 clusters
+#km-this occupies much space
+
+```
+#Tweets in each cluster
+```{r}
+km$size
+```
+
+#Visualizing the cluster
+```{r}
+library(factoextra)
+fviz_cluster(km, data = tweets.dtm.nz[, -5],
+             palette = c("#2E9FDF", "#00AFBB", "#E7B800"), 
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_bw()
+             )
+```
+From the graph above, more tweets are found in cluster 2.
+```{r}
+#select a cluster 1,2 and 3
+cl_1 <- km$cluster==1
+cl_2 <- km$cluster==2
+cl_3 <- km$cluster==3
+```
+
+```{r}
+#word cloud
+set.seed(1234)
+library(wordcloud)
+freq <- sort(colSums(as.matrix(sparse_DTM)), decreasing=TRUE)
+wordcloud(names(freq[1:20]), freq, min.freq=1, max.words=Inf, random.order=FALSE, colors=brewer.pal(8, "Accent"), scale=c(7,.4), rot.per=0)
+```
+```{r}
+wordcloud(names(cl_2), freq, min.freq=1, max.words=Inf, random.order=FALSE, colors=brewer.pal(8, "Accent"), scale=c(7,.4), rot.per=0)
+```
+## Hierarchical clustering of the top 20 words in the largest cluster
+
+```{r}
+top_20 <- desc(cl_2)[1:20]
+#top_20
+dist_mat <- dist(top_20, method = 'euclidean')
+hclust_avg <- hclust(dist_mat, method = 'average')
+plot(hclust_avg)
+```
+
+# Building Networks
+
+## 10 most popular friends
+
+```{r}
+head(tweets_1, 2)
+```
+
+```{r}
+#select screen_name and followers count
+popular_tweets <- tweets_1 %>% select(screen_name, followers_count)
+library(plyr)
+popular_10 <- arrange(popular_tweets,desc(followers_count))
+popular_10 <- popular_10[1:10,]
+popular_10
+```
+
+## Obtaining a 2.0-degree egocentric graph centred
+
+### Rename the screen name after filtering the unique values
+
+```{r}
+library(dplyr)
+popular_10 <- popular_10 %>%
+    mutate(screen_name = recode(screen_name, BlackettMusic='BlacketM',AnxiosNFT='Anxious',dielamaharanie='dielama',dielamaharanie='dielama',
+                                BlackettPromo='BlacketP',sberryspiced='sberry',sberryspiced='sberry', sberryspiced='sberry',sberryspiced='sberry',sberryspiced='sberry'))
+popular_10
+```
+
+```{r}
+library(igraph)
+g <- make_ring(10)
+ego_size(g, order = 0, 1:3)
+ego(g, order = 2, 1:3)
+
+# attributes are preserved
+V(g)$name <- popular_10$screen_name
+make_ego_graph(g, order = 2, 1:3)
+
+# connecting to the neighborhood
+g <- make_ring(10)
+g <- connect(g, 2)
+```
+
+```{r}
+lay <- layout.fruchterman.reingold(g) # save coordinates
+plot.igraph(g, layout=lay)
+```
+
+## Closeness of g
+
+```{r}
+Closeness <- closeness(g)
+Closeness
+```
+
+## Top 3 people based on centrality
+
+```{r}
+Eig <- evcent(g)$vector
+Eig
+
+```
+
+## Conclusion
+
+Based on the closeness scores, the values distance indicate their are equal. However, the three popular followers are BlacketM, Anxious and dielama respectively.
+
+```{r}
